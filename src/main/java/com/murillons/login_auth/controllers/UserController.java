@@ -25,7 +25,7 @@ public class UserController implements UserApi {
             User registeredUser = userService.registerUser(user);
             return ResponseEntity.status(HttpStatus.CREATED).body(registeredUser);
         } catch (EmailExistException ex) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ex.getMessage());
+            throw ex;
         }
     }
 }

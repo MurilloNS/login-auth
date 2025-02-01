@@ -4,16 +4,16 @@ import java.time.Instant;
 
 public class StandardError {
     private Instant timestamp;
-    private Integer status;
+    private int status;
     private String error;
     private String message;
     private String path;
 
-    public StandardError(){
+    public StandardError() {
     }
 
-    public StandardError(Instant timestamp, Integer status, String error, String message, String path) {
-        this.timestamp = timestamp;
+    public StandardError(int status, String error, String message, String path) {
+        this.timestamp = Instant.now();
         this.status = status;
         this.error = error;
         this.message = message;
@@ -28,11 +28,11 @@ public class StandardError {
         this.timestamp = timestamp;
     }
 
-    public Integer getStatus() {
+    public int getStatus() {
         return status;
     }
 
-    public void setStatus(Integer status) {
+    public void setStatus(int status) {
         this.status = status;
     }
 
