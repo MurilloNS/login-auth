@@ -7,6 +7,7 @@ import com.murillons.login_auth.dto.UserRequest;
 import com.murillons.login_auth.entities.User;
 import com.murillons.login_auth.exceptions.EmailExistException;
 import com.murillons.login_auth.services.UserService;
+import com.murillons.login_auth.services.impl.PasswordResetService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -35,6 +36,9 @@ public class UserController implements UserApi {
     @Autowired
     private UserDetailsService userDetailsService;
 
+    @Autowired
+    private PasswordResetService passwordResetService;
+
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@Valid @RequestBody User user) {
         try {
@@ -48,15 +52,25 @@ public class UserController implements UserApi {
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody UserRequest request) {
         try {
-            authenticationManager.authenticate(
-                    new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
-            );
+            authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword()));
 
             UserDetails user = userDetailsService.loadUserByUsername(request.getEmail());
             String token = jwtUtil.generateToken(user.getUsername());
             return ResponseEntity.ok(new AuthResponse(token));
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Credenciais inválidas");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Usuário inválido");
         }
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<String> forgotPassword(@RequestParam String email) {
+        passwordResetService.sendPasswordResetEmail(email);
+        return ResponseEntity.ok("E-mail de recuperação enviado.");
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<String> resetPassword(@RequestParam String email, @RequestParam String token, @RequestParam String newPassword) {
+        passwordResetService.resetPassword(email, token, newPassword);
+        return ResponseEntity.ok("Senha redefinida com sucesso!");
     }
 }
