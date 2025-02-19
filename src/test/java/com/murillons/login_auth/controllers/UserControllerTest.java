@@ -1,121 +1,60 @@
 package com.murillons.login_auth.controllers;
 
-import com.murillons.login_auth.configuration.JwtUtil;
-import com.murillons.login_auth.dto.AuthResponse;
-import com.murillons.login_auth.dto.UserRequest;
-import com.murillons.login_auth.entities.User;
-import com.murillons.login_auth.exceptions.EmailExistException;
+import com.murillons.login_auth.dto.UserResponseDto;
 import com.murillons.login_auth.services.UserService;
-import com.murillons.login_auth.services.impl.CustomUserDetailsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.userdetails.UserDetails;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.mockito.Mockito.*;
+import java.util.Collections;
+import java.util.List;
 
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.is;
+import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@ExtendWith(MockitoExtension.class)
 public class UserControllerTest {
-    @InjectMocks
-    private UserController userController;
+    private MockMvc mockMvc;
 
     @Mock
     private UserService userService;
 
-    @Mock
-    private AuthenticationManager authenticationManager;
+    @InjectMocks
+    private UserController userController;
 
-    @Mock
-    private CustomUserDetailsService userDetailsService;
-
-    @Mock
-    private JwtUtil jwtUtil;
-
-    private User validUser;
-    private UserRequest validRequest;
-    private UserRequest invalidRequest;
-    private UserDetails userDetails;
+    private UserResponseDto userResponseDto;
 
     @BeforeEach
     void setUp() {
-        MockitoAnnotations.openMocks(this);
-        validUser = new User();
-        validUser.setId(1L);
-        validUser.setEmail("murillo@junit.com");
-        validUser.setPassword("password");
-
-        validRequest = new UserRequest("murillo@teste.com", "password");
-        invalidRequest = new UserRequest("murillo@teste.com", "wrongpassword");
-
-        userDetails = org.springframework.security.core.userdetails.User.withUsername(validRequest.getEmail())
-                .password(validRequest.getPassword())
-                .roles("USER")
+        userResponseDto = new UserResponseDto("John Doe", "john@example.com", Collections.emptySet());
+        mockMvc = MockMvcBuilders.standaloneSetup(userController)
                 .build();
     }
 
     @Test
-    void registerUser_Success() {
-        when(userService.registerUser(validUser)).thenReturn(validUser);
+    @WithMockUser(username = "admin", roles = {"ADMIN"})
+    void testGetAllUsers_Success() throws Exception {
+        List<UserResponseDto> users = Collections.singletonList(userResponseDto);
 
-        ResponseEntity<?> response = userController.registerUser(validUser);
+        when(userService.getAllUsers()).thenReturn(users);
 
-        assertEquals(HttpStatus.CREATED, response.getStatusCode());
-        assertEquals(validUser, response.getBody());
-        verify(userService, times(1)).registerUser(validUser);
-    }
-
-    @Test
-    void registerUser_EmailAlreadyExists() {
-        when(userService.registerUser(validUser)).thenThrow(new EmailExistException("Esse e-mail já está cadastrado!"));
-
-        ResponseEntity<?> response = userController.registerUser(validUser);
-
-        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
-        assertEquals("Esse e-mail já está cadastrado!", response.getBody());
-        verify(userService, times(1)).registerUser(validUser);
-    }
-
-    @Test
-    void login_Success() {
-        when(authenticationManager.authenticate(
-                any(UsernamePasswordAuthenticationToken.class)
-        )).thenReturn(null);
-        when(userDetailsService.loadUserByUsername(validRequest.getEmail())).thenReturn(userDetails);
-        when(jwtUtil.generateToken(validRequest.getEmail())).thenReturn("mocked-jwt-token");
-
-        ResponseEntity<?> response = userController.login(validRequest);
-
-        assertEquals(HttpStatus.OK, response.getStatusCode());
-
-        AuthResponse expectedResponse = new AuthResponse("mocked-jwt-token");
-        AuthResponse actualResponse = (AuthResponse) response.getBody();
-
-        assertNotNull(actualResponse);
-        assertEquals(expectedResponse.getToken(), actualResponse.getToken());
-        verify(authenticationManager, times(1)).authenticate(any());
-        verify(userDetailsService, times(1)).loadUserByUsername(validRequest.getEmail());
-        verify(jwtUtil, times(1)).generateToken(validRequest.getEmail());
-    }
-
-    @Test
-    void login_Failure_InvalidCredentials() {
-        doThrow(new BadCredentialsException("Invalid credentials")).when(authenticationManager)
-                .authenticate(any(UsernamePasswordAuthenticationToken.class));
-
-        ResponseEntity<?> response = userController.login(invalidRequest);
-
-        assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
-        assertEquals("Usuário inválido", response.getBody());
-        verify(authenticationManager, times(1)).authenticate(any());
-        verify(userDetailsService, never()).loadUserByUsername(any());
-        verify(jwtUtil, never()).generateToken(any());
+        mockMvc.perform(get("/api/user")
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].name", is("John Doe")))
+                .andExpect(jsonPath("$[0].email", is("john@example.com")));
     }
 }

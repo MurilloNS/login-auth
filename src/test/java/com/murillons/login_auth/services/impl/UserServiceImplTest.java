@@ -1,62 +1,111 @@
 package com.murillons.login_auth.services.impl;
 
+import com.murillons.login_auth.configuration.JwtTokenProvider;
+import com.murillons.login_auth.dto.LoginRequestDto;
+import com.murillons.login_auth.dto.LoginResponseDto;
+import com.murillons.login_auth.dto.UserResponseDto;
+import com.murillons.login_auth.entities.Role;
 import com.murillons.login_auth.entities.User;
-import com.murillons.login_auth.exceptions.EmailExistException;
+import com.murillons.login_auth.exceptions.EmailAlreadyExistsException;
+import com.murillons.login_auth.repositories.RoleRepository;
 import com.murillons.login_auth.repositories.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.util.Collections;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
-import static org.mockito.internal.verification.VerificationModeFactory.times;
 
+@ExtendWith(MockitoExtension.class)
 public class UserServiceImplTest {
     @Mock
     private UserRepository userRepository;
 
+    @Mock
+    private RoleRepository roleRepository;
+
+    @Mock
+    private PasswordEncoder passwordEncoder;
+
+    @Mock
+    private AuthenticationManager authenticationManager;
+
+    @Mock
+    private JwtTokenProvider jwtTokenProvider;
+
     @InjectMocks
     private UserServiceImpl userService;
 
+    private User user;
+    private Role role;
+
     @BeforeEach
     void setUp() {
-        MockitoAnnotations.openMocks(this);
-    }
-
-    @Test
-    void registerUser_ShouldSaveUser_WhenEmailNotExists() {
-        User newUser = new User();
-        newUser.setEmail("newuser@example.com");
-
-        when(userRepository.findByEmail("newuser@example.com")).thenReturn(null);
-        when(userRepository.save(any(User.class))).thenReturn(newUser);
-
-        User savedUser = userService.registerUser(newUser);
-
-        assertNotNull(savedUser);
-        assertEquals("newuser@example.com", savedUser.getEmail());
-
-        verify(userRepository, times(1)).save(newUser);
-    }
-
-    @Test
-    void registerUser_ShouldThrowEmailExistException_WhemEmailExists(){
-        User user = new User();
-        user.setEmail("existente@example.com");
+        role = new Role(1L, "ROLE_USER");
+        user = new User();
+        user.setId(1L);
+        user.setName("John Doe");
+        user.setEmail("john.doe@example.com");
         user.setPassword("password123");
+        user.setRoles(Collections.singleton(role));
+    }
 
-        when(userRepository.findByEmail("existente@example.com")).thenReturn(Optional.of(user));
+    @Test
+    void testRegisterUser_Success() {
+        when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.empty());
+        when(roleRepository.findByName("ROLE_USER")).thenReturn(Optional.of(role));
+        when(passwordEncoder.encode(user.getPassword())).thenReturn("hashedPassword");
+        when(userRepository.save(any(User.class))).thenReturn(user);
 
-        EmailExistException exception = assertThrows(EmailExistException.class, () -> {
-            userService.registerUser(user);
-        });
+        UserResponseDto response = userService.registerUser(user);
 
-        assertEquals("Esse e-mail já está cadastrado!", exception.getMessage());
-        verify(userRepository, times(1)).findByEmail("existente@example.com");
-        verify(userRepository, never()).save(user);
+        assertNotNull(response);
+        assertEquals("John Doe", response.getName());
+        assertEquals("john.doe@example.com", response.getEmail());
+        verify(userRepository, times(1)).save(any(User.class));
+    }
+
+    @Test
+    void testRegisterUser_EmailAlreadyExists() {
+        when(userRepository.findByEmail(user.getEmail())).thenReturn(Optional.of(user));
+
+        assertThrows(EmailAlreadyExistsException.class, () -> userService.registerUser(user));
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    void testLoginUser_Success() {
+        LoginRequestDto loginRequestDto = new LoginRequestDto();
+        loginRequestDto.setEmail(user.getEmail());
+        loginRequestDto.setPassword("password123");
+
+        Authentication authentication = mock(Authentication.class);
+
+        UserDetails userDetails = new org.springframework.security.core.userdetails.User(
+                user.getEmail(),
+                user.getPassword(),
+                Collections.emptyList()
+        );
+
+        when(authenticationManager.authenticate(any(UsernamePasswordAuthenticationToken.class))).thenReturn(authentication);
+        when(authentication.getPrincipal()).thenReturn(userDetails);
+        when(jwtTokenProvider.generateToken(any())).thenReturn("mocked-jwt-token");
+
+        LoginResponseDto response = userService.loginUser(loginRequestDto);
+
+        assertNotNull(response);
+        assertEquals("mocked-jwt-token", response.getToken());
     }
 }
